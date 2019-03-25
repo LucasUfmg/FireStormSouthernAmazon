@@ -1,0 +1,155 @@
+# Load Packs
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(gridExtra)
+# Figures for The gathering Fire Storm -----------
+# VPD and MCWD relation with Burnt Area #####
+
+setwd("C:/Users/iis/Downloads")
+
+fires = read.csv("BA_VPD_MCWD_on_fire_scars.csv")
+
+# Visualize  Type 1 
+p1 = fires %>%
+  ggplot(aes(Year,Burned.Area.RCP.8.5.D))+
+  #geom_col(position = "dodge", fill = "red")
+  geom_point() + geom_smooth(method = "lm", se = F)
+p2 = fires %>%
+  ggplot(aes(Year,VPD.RCP.8.5.D))+
+  #geom_col(position = "dodge", fill = "orange")
+  geom_point() + geom_smooth(method = "lm", se = F)
+p3 = fires %>%
+  ggplot(aes(Year,MCWD.RCP.8.5D))+
+  #geom_col(position = "dodge", fill = "blue")
+  geom_point() + geom_smooth(method = "lm", se = F)
+
+grid.arrange(p1,p2,p3)
+
+# Visualize Type 2 (Correlation) 
+p1 = fires %>%
+  ggplot(aes(VPD.RCP.8.5.D,Burned.Area.RCP.8.5.D))+
+  #geom_col(position = "dodge", fill = "red")
+  geom_point(aes(colour = Year)) + geom_smooth(method = "loess",
+                                               se = F)
+
+p2 = fires %>%
+  ggplot(aes(MCWD.RCP.8.5D,Burned.Area.RCP.8.5.D))+
+  #geom_col(position = "dodge", fill = "red")
+  geom_point(aes(colour =Year)) + geom_smooth(method = "loess", se = F) 
+
+grid.arrange(p1,p2)
+
+# Type 3 (Coreelation faceted - Final figures)
+
+#vpd_model = function(df) {
+#  lm(Burned.Area.RCP.8.5.D ~ VPD.RCP.8.5.D, data = df)
+#}
+
+#mcwd_model = function(df) {
+#  lm(Burned.Area.RCP.8.5.D ~ MCWD.RCP.8.5D, data = df)
+#}
+
+fires = fires %>%
+  mutate(Decade = cut(Year, seq(2000, 2050, by = 10),
+                      labels = paste(seq(2000, 2040, by = 10),
+                                     seq(2010, 2050, by = 10), sep = "_"))) 
+
+p1 = ggplot(fires,aes(VPD.RCP.8.5.D,Burned.Area.RCP.8.5.D))+
+  #geom_col(position = "dodge", fill = "red")
+  geom_point(size = 7, alpha = .5, show.legend = T, color = "orange") + 
+  geom_smooth(method = "loess",se = F,color = "red") +
+  geom_smooth(method = "lm",se = F,color = "orange", linetype = 2, lwd = 0.1) + xlab("VPD (Kpa)") + ylab("BA (Mha)") +
+  theme_gray(base_size = 22) +
+  facet_wrap(~Decade)
+
+p2 =  ggplot(fires,aes(MCWD.RCP.8.5D,Burned.Area.RCP.8.5.D))+
+  #geom_col(position = "dodge", fill = "red")
+  geom_point(size = 7, alpha = .5, show.legend = T, color = "orange") + 
+  geom_smooth(method = "loess",se = F,color = "red") +
+  geom_smooth(method = "lm",se = F,color = "orange", linetype = 2, lwd = 0.1) + xlab(expression(paste(Delta, "MCWD (mm)")))+ ylab("BA (Mha)") +
+  theme_gray(base_size = 22) +
+  facet_wrap(~Decade)
+
+
+tiff("vpd_mcwd_relation_with_BA.tif",  width = 18, height = 18, units = 'in', res = 300, compression = 'none')
+grid.arrange(p1,p2)
+dev.off()
+
+
+##################################################
+#Plot Carluc Figures
+
+files = list.files("C:\\Users\\iis\\Downloads\\CARLUC", pattern = ".csv", full.names = T)
+
+files_import = lapply(files, read.csv)
+
+#fire_scar = do.call(rbind, files_import)
+
+head(files_import[[1]])
+head(files_import[[2]])
+
+head(files_import[[3]])
+head(files_import[[4]])
+
+t1 = data.frame(files_import[[1]])
+t2 = data.frame(files_import[[2]])
+t3 = data.frame(files_import[[3]])
+t4 = data.frame(files_import[[4]])
+
+
+t1.m = t1[-(3:5),-(4:8)]
+t1.m = melt(t1.m, id = "Year")
+
+t2.m = t2[-3,-4]
+t2.m = melt(t2.m, id = "Year")
+
+
+t3.m = melt(t3, id = "Year")
+
+t4.m = t4[,-4]
+t4.m = melt(t4.m, id = "Year")
+
+p1 = ggplot(t1.m, aes(as.factor(Year),value, fill = as.factor(variable)))+
+  geom_col(position = "dodge", alpha = .4) +
+  xlab("Year") + ylab("Fire Line Intensity (kW/m)") +
+  theme_minimal(base_size = 22) +
+  theme(legend.title = element_blank(), legend.position = "top") +
+  scale_fill_manual(values = c("red","orange"))+
+  annotate(geom="text", x=1, y= 170, label="Fire Line Intensity\n (kW/m)",label=13, fontface = 2,
+           size = 6, color="black") 
+
+p2 = ggplot(t2.m, aes(as.factor(Year),value, fill = as.factor(variable)))+
+  geom_col(position = "dodge", alpha = .4) +
+  xlab("Year") + ylab("Spread Rate (m/min)") +
+  theme_minimal(base_size = 22) +
+  theme(legend.title = element_blank(), legend.position = "top") +
+  #scale_color_discrete(c("red","blue")) +
+  scale_fill_manual(values = c("red","orange"))+
+  annotate(geom="text", x=2.2, y= .44, label="Spread\n Rate\n (m/min)",label=13, fontface = 2,
+           size = 6, color="black") 
+
+p3 = ggplot(t3.m, aes(Year,value, colour = variable))+
+  #geom_col(position = "dodge") +
+  geom_point(alpha = .4) + geom_line(lwd = 0.8, alpha = .4) +
+  xlab("Year") + ylab("Vapor Pressure Deficit (Kpa)") +
+  theme_minimal(base_size = 22) +
+  theme(legend.title = element_blank(), legend.position = "top") +
+  scale_color_manual(values = c("red","orange"))+
+  annotate(geom="text", x=2009, y= 2.5, label="Vapor\n Pressure\n Deficit\n (Kpa)",label=13, fontface = 2,
+           size = 6, color="black") 
+
+
+p4 = ggplot(t4.m, aes(as.factor(Year),value, fill = as.factor(variable)))+
+  geom_col(position = "dodge", alpha = .4) +
+  xlab("Year") + ylab("Fuel Mass (Kg/m²)") +
+  theme_minimal(base_size = 22) +
+  theme(legend.title = element_blank(), legend.position = "top") +
+  scale_fill_manual(values = c("red","orange"))+
+  annotate(geom="text", x=1, y= 2, label="Fuel Mass\n (Kg/m²)",label=13, fontface = 2,
+           size = 6, color="black") 
+
+tiff("carluc.tif",  width = 14, height = 10, units = 'in', res = 300, compression = 'none')
+gridExtra::grid.arrange(p1,p2,p3,p4 , ncol = 2)
+dev.off()
