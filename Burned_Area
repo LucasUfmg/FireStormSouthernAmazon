@@ -1,0 +1,33 @@
+# Trace gas from biomass burning 
+
+###############################################################
+library(tidyverse)
+library(grid)
+###############################################################
+
+data_dir <- "C:\\Users\\iis\\Desktop\\Lucas\\fire_storm\\tables"
+
+#Burned area (ba)
+ba <- read.csv(
+  file.path(data_dir, "area_queimada_debug.csv")
+)
+
+change_names_ba = c("Year","RCP.8.5.D","RCP.2.6.D","RCP.8.5.N","RCP.2.6.N")
+
+names(ba) = change_names_ba
+
+ba$X = NULL
+
+ba$Total =  rowSums(ba[,2:5]) # Create column with total
+
+ba.final <- ba %>%
+  mutate(decade = cut(Year, seq(2000, 2050, by = 10), 
+                      labels = paste(seq(2000, 2040, by = 10),
+                                     seq(2010, 2050, by = 10), sep = "_")))%>%
+  select(-1) %>%
+  gather(Var,"value", RCP.8.5.D:Total) %>%
+  unite("temp", c("Var", "decade")) %>%
+  plyr::ddply(~temp,summarise, Sum = sum(value)) %>%
+  separate(temp, c("RCP","Initial_Decade","Final_Decade"), sep = "_") %>%
+  unite("Decade",c("Initial_Decade","Final_Decade")) %>%
+  spread(RCP,Sum)
