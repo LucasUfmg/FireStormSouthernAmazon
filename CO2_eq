@@ -1,0 +1,41 @@
+# Trace gas from biomass burning 
+
+###############################################################
+library(tidyverse)
+library(grid)
+###############################################################
+
+data_dir <- "C:\\Users\\iis\\Desktop\\Lucas\\fire_storm\\tables"
+
+#Gross emissions
+gross_e <- read.csv(
+  file.path(data_dir, "emissoes_brutas.csv")
+)
+
+#Gross fire-induced carbon emissions
+gross_e[6:10] = NULL
+change_names_gross = c("Year","X8.5 D","X2.6 D","X8.5 N","X2.6 N")
+names(gross_e) = change_names_gross
+gross.plot <- gross_e%>%
+  dplyr::select(Year, `X8.5 D`:`X2.6 N`)%>%
+  gather(Var, Values, `X8.5 D`:`X2.6 N`)%>%
+  separate(Var,  sep = " ", c('RCP', 'Deforestation')) %>%
+  mutate(CO2 =  Values * 3.64,
+         CO =  Values * 1.104 * 0.37,
+         CH4 = Values * 1.00068 * 0.37,
+         N2O = Values * 1.00002 * 0.37,
+         NOx = Values * 1.00016 * 0.37,
+         Total = CO2 + CO + CH4 + N2O + NOx)
+
+ gp <- gross.plot %>%
+   mutate(decade = cut(Year, seq(2000, 2050, by = 10), 
+                       labels = paste(seq(2000, 2040, by = 10),
+                                      seq(2010, 2050, by = 10), sep = "_")))%>%
+   gather(Var, Values, `CO2`:`Total`) %>%
+   unite("temp", c("RCP","Deforestation","Var", "decade")) %>%
+   plyr::ddply(~temp,summarise, Sum = sum(Values)) %>%
+   separate(temp, c("RCP", "Deforestation","Gas","Initial_Decade","Final_Decade"), sep = "_") %>%
+   unite("Decade",c("Initial_Decade","Final_Decade")) %>%
+   spread(Gas,Sum)
+ 
+ write.csv(gp,"C:\\Users\\iis\\Desktop\\Lucas\\fire_storm\\tables\\emissoes_co_eq\\co_eq.csv")
