@@ -1,0 +1,390 @@
+###############################################################
+library(tidyverse)
+library(grid)
+###############################################################
+
+data_dir <- "C:\\Users\\iis\\Desktop\\Lucas\\fire_storm\\tables"
+figure_dir <- "~/Dropbox/Manuscript/FireStorm/Figure"
+
+###############################################################
+#Importing data
+###############################################################
+
+#Protected Area RCP2.6 deforestation
+PF_26D <- read_csv(
+  file.path(data_dir, "aq_protegida_floresta_RCP26D.csv")
+)%>%
+  mutate(
+    Scenario = 'RCP26D',
+    Year = as.numeric(Year)
+  )%>%
+  select("Year", "Protected Areas", "Scenario")
+
+#Protected Area RCP8.5 deforestation
+PF_85D <- read_csv(
+  file.path(data_dir, "aq_protegida_floresta_RCP85D.csv")
+)%>%
+  mutate(Scenario = 'RCP85D',
+         Year = as.numeric(Year)
+  )%>%
+  select("Year", "Protected Areas", "Scenario")
+
+#Combine RCP2.6 and RCP8.5 - Protected forests
+PF <- PF_26D%>%bind_rows(PF_85D)
+
+#Import emissions from deforestation
+desm <- read_csv(
+  file.path(data_dir, "desmatamento_emissoes.csv")
+)
+
+#Import emissions from deforestation - cumulative
+FOGO_e <- read_csv(
+  file.path(data_dir, "emissoes_acc_RCP_D_&_N.csv")
+)
+
+#Import burned area
+AQ  <- read.csv(
+  file.path(data_dir, "area_queimada.csv")
+)
+change_names = c("Year","RCP 8.5","RCP 2.6","sd 85 max","sd 85 min","sd 26 max","sd 26 min")
+names(AQ) = change_names
+AQ = AQ[complete.cases(AQ),]
+AQ$Year.numeric = as.numeric(levels(AQ$Year))[AQ$Year] 
+AQ$Year = NULL
+AQ = AQ[,c(7,1,2,3,4,5,6)]
+
+#Import fire intensity
+FI  <- read_csv(
+  file.path(data_dir, "FI.csv"))[,1:3]
+
+#Import burned area inside outside protected forests - RCP 8.5
+PA_85 <- read_csv(
+  file.path(data_dir, "floresta_AP_km2_RCP_26_D.csv")
+)
+
+#Import burned area inside outside protected forests - RCP 2.6
+PA_26 <- read_csv(
+  file.path(data_dir, "floresta_AP_km2_RCP_85_D.csv")
+)
+
+#Import burned area study area - accumulated with and without deforestation
+BACEN <- read_csv(
+  file.path(data_dir, "area_queimada_acc_RCP_D_&_N.csv")
+)
+
+#Gross emissions
+gross_e <- read.csv(
+  file.path(data_dir, "emissoes_brutas.csv")
+)
+
+###############################################################
+#Preparing the data for ggplot
+###############################################################
+#Burned area
+BA.plot <- BACEN%>%
+  select(Year:`RCP 26 N`)%>%
+  gather(Var, Values, `RCP 8.5 D`:`RCP 26 N`)%>%
+  separate(Var, sep = ' ', c('V1','RCP', 'Deforestation'))
+
+#Protected forests
+PA.plot <- AQ%>%
+  select(Year:`RCP 2.6`)%>%
+  gather(Var, Values, `RCP 8.5`:`RCP 2.6`)%>%
+  group_by(Var)%>%
+  mutate(Area.c = cumsum(Values))
+
+#Gross fire-induced carbon emissions
+gross_e[6:10] = NULL
+change_names_gross = c("Year","X8.5 D","X2.6 D","X8.5 N","X2.6 N")
+names(gross_e) = change_names_gross
+gross.plot <- gross_e%>%
+  dplyr::select(Year, `X8.5 D`:`X2.6 N`)%>%
+  gather(Var, Values, `X8.5 D`:`X2.6 N`)%>%
+  separate(Var,  sep = " ", c('RCP', 'Deforestation')) %>%
+  mutate(CO2 =  Values * 3.64,
+         CO =  Values * 1.104 * 0.37,
+         CH4 = Values * 1.00068 * 0.37,
+         N2O = Values * 1.00002 * 0.37,
+         NOx = Values * 1.00016 * 0.37,
+         Total = CO2 + CO + CH4 + N2O + NOx)
+
+
+
+#Net fire-induced carbon emissions
+net.plot <- FOGO_e%>%
+  gather(Var, Values, "RCP 8.5 D (PgC)":"RCP 2.6 N  (PgC)")%>%
+  separate(Var,  
+           sep = ' ', c('V1','RCP', 'Deforestation', 'V4'))
+
+
+
+#Fire intensity
+FI.plot <- FI%>%
+  gather(Var, Values, `RCP 8.5`:`RCP 2.6`)%>%
+  group_by(Var)%>%
+  mutate(Mov.avg = zoo::rollapply(Values, 5,  
+                                  mean, na.rm = TRUE,
+                                  fill = NA))
+
+###############################################################
+#Figure 3 - Panel A
+###############################################################
+LWD = 0.9 
+
+p1 <- ggplot()+
+  geom_col(#barplot
+    data = AQ, #Burned area (BA)
+    aes(x = Year.numeric, y = `RCP 8.5`),#Scenario 8.5
+    fill = 'red', #red bars
+    width = 0.5, 
+    alpha = 0.8,
+    position = position_dodge(width = 0.1))+
+  geom_col(#other barplot
+    data = AQ, 
+    aes(x = Year.numeric + 0.5, 
+        y = `RCP 2.6`),
+    fill='orange', 
+    width = .5, 
+    alpha = .8,
+    position = position_dodge(width = .2))+
+  geom_errorbar(
+    data = AQ, 
+    aes(x = Year.numeric, 
+        ymax = `RCP 8.5` + `sd 85 max`, 
+        ymin = `RCP 8.5` - `sd 85 min`),
+    width = 0.2,
+    color = 'grey')+
+  geom_errorbar(
+    data = AQ, 
+    aes(x=Year.numeric + 0.5,
+        ymax = `RCP 2.6` + `sd 26 max`, 
+        ymin = `RCP 2.6` - `sd 26 min`), 
+    width = 0.2,
+    color = 'grey')+
+  geom_line(
+    data = BACEN, 
+    aes(x = Year, y = `RCP 8.5 D`/5), 
+    color = 'red', 
+    lwd = LWD)+
+  geom_line(
+    data = BACEN, aes(x = Year, y = `RCP 8.5 N`/5), 
+    color = 'red', 
+    lwd = LWD, 
+    linetype = 2)+
+  geom_line(
+    data = BACEN, 
+    aes(x = Year, y = `RCP 2.6 D`/5), 
+    color = 'orange', 
+    lwd = LWD)+
+  geom_line(
+    data = BACEN, 
+    aes(x = Year, y = `RCP 26 N`/5), 
+    color = 'orange', 
+    lwd = LWD, 
+    linetype = 2)+
+  scale_color_manual(
+    values = c("orange","red")) +
+  
+  scale_y_continuous(expression("Burned Area\n(Mha yr-1)"),
+                     sec.axis = sec_axis(~.*5, name = "Burned Area\n(Mha)")) +
+   theme_minimal(base_size = 20) +
+  xlab("") + #ylab("Burned Area\n(Mha yr-1)") + 
+  #labs(x = "", y = "Burned Area\n(Mha yr-Ä±)")+
+  annotate(geom="text", x=2002, y= .8, label="A", fontface = 2,
+           size = 6, color="black") +
+  theme(#axis.title.y = element_blank(), 
+    #axis.text.y =  element_blank(),
+    axis.title.x = element_blank(), 
+    axis.text.x =  element_blank(),
+    #legend.position = c(2002,2),
+    #legend.justification = c(2002,2),
+    axis.title.y =element_text(margin = margin(t = 0, r = 20, b = 0, l = 5)))
+#Print
+p1 #+theme(legend.position = "top")
+
+###############################################################
+#Figure 3 - Panel B
+###############################################################
+p2 <- ggplot()+
+  geom_point(
+    data = FI.plot,
+    aes(x = Year, y = Values, color = Var, shape = Var), 
+    alpha=.3)+
+  geom_line(
+    data =  FI.plot,
+    aes(x = Year, y = Values, color = Var), 
+    alpha=.3)+
+  geom_line(
+    data =  FI.plot,
+    aes(x = Year, y = Mov.avg, color = Var))+
+  geom_smooth(
+    data =  FI.plot, 
+    aes(x = Year, y = Mov.avg, color = Var, fill = Var),
+    method=lm, se = F, alpha=.2)+
+  scale_color_manual(
+    values = c("orange","red"))+
+  scale_fill_manual(
+    values = c("orange","red"))+
+  #ylab("Fire Intensity\n(kW m^-1)") +
+  ylab("Fire Intensity\n (kW m-1)") +
+  annotate(geom="text", x=2002, y= 750, label="B", fontface = 2,
+           size = 6, color="black") +
+  theme_minimal(base_size = 20)+
+  theme(legend.position = "none")+
+  theme(#axis.title.y = element_blank(), 
+    #axis.text.y =  element_blank(),
+    axis.title.x = element_blank(), 
+    axis.text.x =  element_blank(),
+    axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+#print              
+p2
+
+###############################################################
+#Figure 3 - Panel C
+###############################################################
+base_line_defH <- (mean(desm$`RCP 8.5 D (MtC)`[1:4])/1e9) * 3.64 
+base_line_defL <- (mean(desm$`RCP 8.5 D (MtC)`[4:8])/1e9) * 3.64 
+
+p3 <- ggplot()+
+  geom_line(
+    data = gross.plot, 
+    aes(x = Year, 
+        y = (Total/1000), 
+        color = RCP, 
+        linetype = Deforestation), 
+    lwd=0.5)+
+  geom_hline(
+    yintercept = base_line_defL,
+    linetype = 2,
+    color = 'black')+
+  geom_hline(
+    yintercept = base_line_defH,
+    linetype = 2,
+    color = 'black')+
+  scale_color_manual(
+    values = c("orange","red","orange","red"))+
+  #ylab(paste0("Gross Emission\n",expression("eCO"[2]))) +
+  ylab("Gross Emission\n(Pg)") +
+  annotate(geom="text", x=2002, y= 3.2, label="C", fontface = 2,
+           size = 6, color="black") +
+  theme_minimal(
+    base_size = 20)+
+  theme(
+    legend.position="none")+
+  theme(#axis.title.y = element_blank(), 
+    #axis.text.y =  element_blank(),
+    axis.title.x = element_blank(), 
+    axis.text.x =  element_blank(),
+    axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+
+#print
+p3
+
+
+# gross.plot %>%
+#   select(Year, RCP, Deforestation, Total, CO2:NOx)%>%
+#   gather(Var, Values, CO2:NOx) %>%
+#   ggplot(aes(x = Year, 
+#              y = Values/Total,
+#              fill = Var)) +
+#   geom_area(alpha = .9) +
+#   facet_grid(RCP~Deforestation) +
+#   theme_minimal(base_size = 20)
+
+
+###############################################################
+#Figure 3 - Panel D
+###############################################################
+p4 <- ggplot()+
+  geom_line(
+    data = net.plot, 
+    aes(x = Year, 
+        y = Values, 
+        color = RCP, 
+        linetype = Deforestation),
+    lwd=1.2)+
+  geom_line(
+    data = desm,
+    aes(x = Year, y = cumsum(`RCP 8.5 D (MtC)`/1e9)),
+    linetype = 3,
+    lwd = 1.3)+
+  scale_color_manual(
+    values = c("orange","red"))+
+  ylab("Net Emissions\n(PgC)") +
+  annotate(geom="text", x=2002, y= 1.4, label="D", fontface = 2,
+           size = 6, color="black") +
+  theme_minimal(
+    base_size = 20)+
+  theme(legend.position = "none",
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)))
+#print 
+p4
+
+###############################################################
+#Complete Figure
+###############################################################
+tiff("C:\\Users\\iis\\Desktop\\Lucas\\fire_storm\\figures\\projections.tif",  width = 14, height = 10, units = 'in', res = 300, compression = 'none')
+#gridExtra::grid.arrange(p1,p2,p3,p4,ncol = 1)
+grid.newpage()
+grid.draw(rbind(ggplotGrob(p1), 
+                ggplotGrob(p2), 
+                ggplotGrob(p3), 
+                ggplotGrob(p4), 
+                size = "last"))
+dev.off()
+###############################################################
+#Getting some numbers
+###############################################################
+
+sapply(gross_e[c(40:49),2:5], sum)
+sapply(gross_e[c(1:9),  2:5], sum)
+sapply(gross_e[-c(1:9), 2:5], sum)
+
+sapply(FOGO_e[c(40:49),2:5], sum,na.rm=T)
+sapply(FOGO_e[c(1:9),  2:5], sum,na.rm=T)
+sapply(FOGO_e[-c(1:9), 2:5], sum,na.rm=T)
+sapply(FOGO_e[,2:5], sum,na.rm=T)
+
+###############################################################
+
+
+
+
+
+
+
+
+
+
+
+#    geom_line(data = desm, aes(x = Year, y = cumsum(RCP85)))+
+#    geom_line(data = desm, aes(x = Year, y = cumsum(RCP85/1e9)))+
+#          theme(legend.position="none")
+
+
+# ###
+# 
+# PA_85 <- PA_85%>%mutate(Var = 'RCP 85')
+# PA_26 <- PA_26%>%mutate(Var = 'RCP 26')
+# 
+# PA <- PA_85%>%bind_rows(PA_26)%>%
+#   group_by(Var)%>%
+#   mutate(Diff = Forest - PA,
+#          Sum = Forest + PA,
+#          Prop = PA/Sum,
+#          CS_Diff = cumsum(Diff),
+#          Mov.prop = zoo::rollapply(Prop, 5,  
+#                                    mean, na.rm = TRUE,
+#                                    fill = NA))%>%ungroup()
+# 
+# 
+# PA.dec <- PA%>%mutate(Decade = str_sub(Year, 1, 3))%>%
+#   group_by(Decade, Var)%>%
+#   summarise(PA = sum(PA,na.rm=T),
+#             FO = sum(Forest, na.rm = T))%>%
+#   group_by(Var)%>%
+#   mutate(PA.prop = PA/(PA+FO),
+#          FO.prop = FO/(PA+FO),
+#          Decade = as.numeric(as.character(paste0(Decade,0))))%>%
+#   gather(Var2, Values, PA.prop:FO.prop)
+# ###
